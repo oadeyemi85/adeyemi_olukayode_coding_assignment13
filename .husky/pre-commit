@@ -1,0 +1,12 @@
+echo "Running pre-commit checks: Prettier, ESLint and tests..."
+
+# Prettier: every file must be formatted
+npm run format:check || { echo "Prettier check failed. Run 'npm run format' and commit again."; exit 1; }
+
+# ESLint: no errors and no warnings
+npm run lint || { echo "ESLint check failed. Fix the errors (or run 'npm run lint:fix') and commit again."; exit 1; }
+
+# Tests: all unit tests must pass
+npm run test:ci || { echo "Tests failed. Fix the failing tests and commit again."; exit 1; }
+
+echo "All pre-commit checks passed."

@@ -1,0 +1,63 @@
+name: CI - Code Quality Checks
+
+# Runs on every push and pull request, so the same checks as the Husky
+# pre-commit hook are enforced even if the hook was bypassed (git commit --no-verify).
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  quality-checks:
+    name: Prettier, ESLint, Tests and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: ESLint check
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test:ci
+
+      - name: Production build
+        run: npm run build
+
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    needs: quality-checks
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t adeyemi_olukayode_ui_garden_build_checks .
+
+  notify-on-failure:
+    name: Report failed build
+    runs-on: ubuntu-latest
+    needs: [quality-checks, docker-build]
+    if: ${{ failure() }}
+    steps:
+      - name: Report failure
+        run: |
+          echo "::error title=Build failed::Prettier, ESLint, tests or the Docker build failed for commit ${{ github.sha }} pushed by ${{ github.actor }}."
+          echo "### :x: Build failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit \`${{ github.sha }}\` by @${{ github.actor }} did not pass the code quality checks." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
