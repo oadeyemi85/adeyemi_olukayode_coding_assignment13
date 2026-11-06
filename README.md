@@ -31,21 +31,23 @@ Commands are written for **PowerShell** (Windows) and also work in macOS/Linux t
 
 ## 2. Project setup
 
+Clone the GitHub repository, then install the project dependencies:
+
 ```powershell
-git clone <your-github-repo-url>
-cd <repo-folder>
+git clone https://github.com/oadeyemi85/adeyemi_olukayode_coding_assignment13.git
+cd adeyemi_olukayode_coding_assignment13
 npm ci
 ```
 
-`npm ci` also runs the `prepare` script, which executes `husky` and **installs the git hooks** (it sets `core.hooksPath` to `.husky/_`). You do not need any extra step. Check with:
+The `prepare` script runs Husky and installs the Git hooks in `.husky/_`. Verify the hook path with:
 
 ```powershell
 git config core.hooksPath      # prints .husky/_
 ```
 
-If you are starting from the supplied ZIP rather than cloning an existing Git repository, run `git init` in the project root **before** `npm ci`; Husky cannot install a Git hook until the folder is a Git repository.
+When using the assignment ZIP instead of cloning the repository, run `git init` in the project folder before `npm ci`; Husky requires a Git repository to install the hook.
 
-> A `.npmrc` file sets `legacy-peer-deps=true` because Create React App 5 declares older peer dependency ranges than React 19 and Storybook 10.
+> `.npmrc` sets `legacy-peer-deps=true` because Create React App 5 declares older peer dependency ranges than React 19 and Storybook 10.
 
 ### Project files added for this assignment
 
@@ -76,108 +78,102 @@ Dockerfile  nginx.conf  docker-compose.yml  .dockerignore
 
 ## 3. Husky pre-commit checks
 
-### How it is set up (steps taken)
+### Setup
 
-1. Installed the tools: `npm install --save-dev husky prettier eslint eslint-config-prettier`.
-2. Added `"prepare": "husky"` to `package.json` so hooks are installed automatically after `npm install`; setup errors are not hidden.
-3. Created `.husky/pre-commit`, which runs, in order:
+1. Installed Husky, Prettier, ESLint, and `eslint-config-prettier` as development dependencies.
+2. Set `"prepare": "husky"` in `package.json` to install Git hooks after dependency installation. Setup errors are not suppressed.
+3. Added `.husky/pre-commit` to run, in order:
    1. `npm run format:check` (Prettier)
    2. `npm run lint` (ESLint, zero warnings allowed)
    3. `npm run test:ci` (Jest tests)
-4. The hook stops at the first failing command, so if **any** check fails the commit is **rejected** and a message tells the developer how to fix it.
+4. The hook stops at the first failed check, prints a message, and blocks the commit.
 
 ### Configuration
 
 - **Prettier** (`.prettierrc.json`): single quotes, semicolons, 100-character lines, 2-space indent, LF line endings.
-- **ESLint** (`.eslintrc.json`): extends `react-app`, `react-app/jest` and `prettier` (turns off rules that clash with Prettier). Extra rules: `eqeqeq`, `prefer-const`, `no-debugger`, `@typescript-eslint/no-unused-vars` (errors), `no-console` (warning, and warnings fail the check).
-- **Tests**: Jest + React Testing Library + jest-styled-components. Every component has tests for visibility and the disabled-state colour.
+- **ESLint** (`.eslintrc.json`): extends `react-app`, `react-app/jest` and `prettier`. Additional rules include `eqeqeq`, `prefer-const`, `no-debugger`, and `@typescript-eslint/no-unused-vars`. ESLint warnings fail the check.
+- **Tests**: Jest, React Testing Library, and jest-styled-components.
 
-### Demonstrate it (commit succeeds)
+### Demonstrate a passing commit
 
 ```powershell
 git add .
 git commit -m "Add feature"
 ```
 
-The terminal prints `Running pre-commit checks: Prettier, ESLint and tests...`, then the three checks run and the commit is created.
+The hook runs Prettier, ESLint, and the tests before Git creates the commit.
 
-### Demonstrate it (commit is blocked)
+### Demonstrate a blocked commit
 
-To demonstrate these failures safely, use a **disposable clone** of the repository. Break one rule at a time, stage only the demonstration file, and try to commit. The commit should be rejected; discard the disposable clone afterward so you do not risk overwriting work in your main copy.
+Use a **disposable clone** to test a failing check. Make one change at a time, stage only the demonstration file, and try to commit. The hook should reject the commit. Discard the disposable clone afterward.
 
-| Rule broken     | How to break it                                                                  | Result                                                        |
-| --------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Prettier        | Add `export const   x = {a:1,\n b:2}` to a new file `src/bad.ts`                 | `[warn] src/bad.ts` then **Prettier check failed**            |
-| ESLint          | Add `const unused = 1; export const y = 2 == 2;` to a new file (format it first) | `eqeqeq` and `no-unused-vars` errors, **ESLint check failed** |
-| Tests           | In any `*.tests.tsx` add `expect(1).toBe(2);`                                    | `Tests: 1 failed` then **Tests failed**                       |
-| Changing a rule | Edit `.prettierrc.json` (for example `"singleQuote": false`) and commit          | Prettier check fails on every file, commit rejected           |
+| Rule broken     | Example                                                                     | Result                                              |
+| --------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| Prettier        | Add poorly formatted code to a new file, such as `src/bad.ts`               | Prettier reports the file and the commit is blocked |
+| ESLint          | Add an unused variable or use `==` instead of `===` in a new source file    | ESLint reports errors and the commit is blocked     |
+| Tests           | Add `expect(1).toBe(2);` to a test                                          | Jest fails and the commit is blocked                |
+| Changing a rule | Change a Prettier setting and leave files that do not match the new setting | Prettier check fails and the commit is blocked      |
 
-In each case the message `husky - pre-commit script failed (code 1)` appears and **no commit is created**, so the code cannot be submitted until it is fixed.
+The terminal reports that the Husky pre-commit script failed, and Git does not create the commit.
 
 ---
 
 ## 4. GitHub Actions (CI)
 
-The workflow `.github/workflows/ci.yml` runs on **every push and every pull request** (any branch). It is the safety net for when the local hook is skipped (for example `git commit --no-verify`).
+The `.github/workflows/ci.yml` workflow runs on every push and pull request. It also checks changes when a local hook is skipped, for example with `git commit --no-verify`.
 
-| Job                 | What it does                                                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------------- |
-| `quality-checks`    | `npm ci` -> Prettier check -> ESLint -> tests -> production build                                  |
-| `docker-build`      | Builds the Docker image (runs only if `quality-checks` passed)                                     |
-| `notify-on-failure` | Runs only on failure: adds an `::error` annotation and a "Build failed" summary, and fails the run |
+| Job                 | What it does                                                            |
+| ------------------- | ----------------------------------------------------------------------- |
+| `quality-checks`    | `npm ci` -> Prettier check -> ESLint -> tests -> production build       |
+| `docker-build`      | Builds the Docker image after `quality-checks` passes                   |
+| `notify-on-failure` | Adds an error annotation and failure summary when a preceding job fails |
 
-### Set it up on GitHub
+### GitHub setup
 
-1. Create a new empty repository on GitHub (for example `adeyemi_olukayode_coding_assignment13`).
-2. Push this project (the `.github` folder must be at the **repository root**):
+The repository is available at [github.com/oadeyemi85/adeyemi_olukayode_coding_assignment13](https://github.com/oadeyemi85/adeyemi_olukayode_coding_assignment13). The `.github` folder must be at the repository root for Actions to detect the workflow.
 
-   ```powershell
-   # Run this once only if the project does not already have a Git repository.
-   git init
-   git add .
-   git commit -m "Assignment 13: build checks"
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/<repo-name>.git
-   git push -u origin main
-   ```
+After pushing changes, open the repository's **Actions** tab to see the workflow result. GitHub notification settings control email alerts for failed runs. To block merges when checks fail, configure branch protection for `main` and require the workflow status check to pass.
 
-3. Open the **Actions** tab on GitHub. The workflow runs automatically and should show a green check.
-4. **Notifications:** GitHub emails the person who pushed whenever a workflow run fails (check _Settings -> Notifications -> Actions_ on your GitHub account). The failed run also shows a red X on the commit, and the `notify-on-failure` job prints the failure summary.
-5. **Block bad merges (recommended):** _Settings -> Branches -> Add branch protection rule_ for `main` -> tick **Require status checks to pass before merging** and select **Prettier, ESLint, Tests and Build**.
+### Demonstrate a CI failure
 
-### Demonstrate the CI failure (bypassing the hook)
+In a disposable clone, introduce a formatting or test failure, then bypass the local hook and push:
 
 ```powershell
-# break a test or format, then skip the local hook on purpose
-git add .
-git commit --no-verify -m "bypass the hook"
+git add src/bad.ts
+git commit --no-verify -m "Demonstrate a failing check"
 git push
 ```
 
-Open the **Actions** tab: the run shows a red X, the failing step is highlighted, the `notify-on-failure` job reports the failure, and GitHub sends a failure email. Fix the code (or `git revert HEAD`) and push again to get a green check.
+The GitHub Actions run should show the failing check and a red status. Fix the issue in the disposable clone and push again to get a passing run.
 
 ---
 
 ## 5. Run the site with Docker on localhost:8018
 
-The `Dockerfile` is a **multi-stage build**:
+The `Dockerfile` uses a **multi-stage build**:
 
-1. **builder** (`node:22-alpine`, `WORKDIR /adeyemi_olukayode_ui_garden_build_checks`): `npm ci`, then **runs Prettier, ESLint and the tests** (the image build fails if any check fails), then `npm run build` creates the production build.
-2. **runner** (`nginx:alpine`, `WORKDIR /adeyemi_olukayode_ui_garden_build_checks`): copies the production files into the working directory and serves them with nginx on port **8018**.
+1. **Builder** (`node:22-alpine`, `WORKDIR /adeyemi_olukayode_ui_garden_build_checks`): installs dependencies, runs Prettier, ESLint, and tests, then creates the production build. The image build stops if a check fails.
+2. **Runner** (`nginx:alpine`, `WORKDIR /adeyemi_olukayode_ui_garden_build_checks`): serves the production files with Nginx on port **8018**.
 
 ### Build the image
+
+Run this command from the project root:
 
 ```powershell
 docker build -t adeyemi_olukayode_ui_garden_build_checks .
 ```
 
-### Run the container with the required name
+### Run the container
 
 ```powershell
 docker run -d --name adeyemi_olukayode_coding_assignment13 -p 8018:8018 adeyemi_olukayode_ui_garden_build_checks
 ```
 
-(Or use Docker Compose: `docker compose up -d --build`.)
+Docker Compose is also available:
+
+```powershell
+docker compose up -d --build
+```
 
 ### Open the site
 
@@ -187,53 +183,55 @@ docker run -d --name adeyemi_olukayode_coding_assignment13 -p 8018:8018 adeyemi_
 ### Verify and clean up
 
 ```powershell
-docker ps --filter "name=adeyemi_olukayode_coding_assignment13"   # shows 0.0.0.0:8018->8018/tcp
-docker exec adeyemi_olukayode_coding_assignment13 pwd              # /adeyemi_olukayode_ui_garden_build_checks
-docker exec adeyemi_olukayode_coding_assignment13 ls               # index.html, static, ...
+docker ps --filter "name=adeyemi_olukayode_coding_assignment13"
+docker exec adeyemi_olukayode_coding_assignment13 pwd
+docker exec adeyemi_olukayode_coding_assignment13 ls
 docker stop adeyemi_olukayode_coding_assignment13
 docker rm adeyemi_olukayode_coding_assignment13
 ```
 
-If the name is already in use, run `docker rm -f adeyemi_olukayode_coding_assignment13` first. If port 8018 is busy, stop the container using it (`docker ps`).
+The working directory is `/adeyemi_olukayode_ui_garden_build_checks`. If the container name is already in use, remove the old container before starting another. If port 8018 is busy, stop the process or container using it.
 
 ---
 
 ## 6. Requirement checklist
 
-| Requirement                                                  | Where / how to verify                                                              |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Dockerfile hosts a production build of the component library | `Dockerfile` runs `npm run build` and serves `build` with nginx                    |
-| Site on localhost:8018 / 127.0.0.1:8018                      | nginx `listen 8018`, `-p 8018:8018`                                                |
-| Container named `adeyemi_olukayode_coding_assignment13`      | `docker run --name ...` (also `docker-compose.yml`), check with `docker ps`        |
-| Working dir `adeyemi_olukayode_ui_garden_build_checks`       | `WORKDIR` in both stages, check with `docker exec ... pwd`                         |
-| Husky pre-commit hook                                        | `.husky/pre-commit`, installed by `npm install` (`git config core.hooksPath`)      |
-| Prettier check                                               | `npm run format:check` (in hook, CI and Docker build)                              |
-| ESLint check                                                 | `npm run lint` (in hook, CI and Docker build)                                      |
-| Tests                                                        | `npm run test:ci` (in hook, CI and Docker build)                                   |
-| Rule change/violation blocks the commit                      | Section 3 "commit is blocked" demonstrations                                       |
-| GitHub Actions repeats the checks and reports failures       | `.github/workflows/ci.yml`, Actions tab, failure email and `notify-on-failure` job |
+| Requirement                                                  | Where / how to verify                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Dockerfile hosts a production build of the component library | `Dockerfile` runs `npm run build` and serves `build` with Nginx          |
+| Site on localhost:8018 / 127.0.0.1:8018                      | Nginx listens on port 8018; Docker maps `8018:8018`                      |
+| Container name                                               | `docker run --name ...` or `docker-compose.yml`; check with `docker ps`  |
+| Working directory                                            | `WORKDIR` in both Docker stages; check with `docker exec ... pwd`        |
+| Husky pre-commit hook                                        | `.husky/pre-commit`, installed by `npm ci` (`git config core.hooksPath`) |
+| Prettier check                                               | `npm run format:check` in the hook, CI, and Docker build                 |
+| ESLint check                                                 | `npm run lint` in the hook, CI, and Docker build                         |
+| Tests                                                        | `npm run test:ci` in the hook, CI, and Docker build                      |
+| Rule change or violation blocks a commit                     | Section 3, "Demonstrate a blocked commit"                                |
+| GitHub Actions checks and reports failures                   | `.github/workflows/ci.yml` and the repository's Actions tab              |
 
 ---
 
-## 7. How it works (summary for the explanation)
+## 7. How it works
 
-- **Why quality gates?** They catch formatting problems, bad patterns and broken behaviour before code is shared, so the main branch always builds and passes tests.
-- **Husky** wires a script into git's `pre-commit` hook. If the script exits with a non-zero code, git cancels the commit. `npm install` installs the hook through the `prepare` script, so every developer gets it.
-- **Prettier** enforces one code style; **ESLint** finds bugs and bad practices (`eslint-config-prettier` stops the two tools from fighting); **Jest tests** check behaviour.
-- **Local hooks can be skipped** (`--no-verify`), so **GitHub Actions** runs the same commands on a clean Ubuntu machine for every push and pull request. A failure turns the commit red, emails the author and (with branch protection) blocks merging. This is the CI part of CI/CD.
-- **Docker** packages the result. The multi-stage build repeats the checks, builds the production files with Node, then ships only static files in a small nginx image.
+- **Quality checks** catch formatting problems, code issues, and failing behavior before changes are shared.
+- **Husky** runs the pre-commit script. A non-zero exit code blocks the commit. The `prepare` script installs the hook when dependencies are installed.
+- **Prettier** enforces consistent formatting. **ESLint** checks code quality, and **Jest** tests component behavior.
+- **GitHub Actions** repeats the checks on pushes and pull requests, including when a local hook is bypassed. Branch protection can require successful checks before merging.
+- **Docker** runs the quality gates, creates a production build, and serves the static files from a small Nginx image.
+
+These steps demonstrate continuous integration and delivery (CI/CD): automated checks verify changes, and Docker packages the production application for deployment.
 
 ---
 
 ## 8. Troubleshooting
 
-| Problem                                      | Fix                                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Hook does not run                            | Run `npm install` (or `npx husky`) and check `git config core.hooksPath` prints `.husky/_` |
-| Commit rejected by Prettier                  | Run `npm run format`, `git add .`, commit again                                            |
-| Commit rejected by ESLint                    | Run `npm run lint:fix`, fix what remains, commit again                                     |
-| Commit rejected by tests                     | Run `npm run test:ci` and fix the failing test                                             |
-| `open Dockerfile: no such file or directory` | Run Docker commands from the project root, where the `Dockerfile` is                       |
-| `ERR_CONNECTION_REFUSED` on port 8018        | Check `docker ps`: the PORTS column must show `0.0.0.0:8018->8018/tcp`                     |
-| Container name already in use                | `docker rm -f adeyemi_olukayode_coding_assignment13`                                       |
-| Actions workflow does not appear             | `.github/workflows/ci.yml` must be at the repository root and pushed to GitHub             |
+| Problem                                      | Fix                                                                                    |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Hook does not run                            | Run `npm ci` in the repository and check `git config core.hooksPath` prints `.husky/_` |
+| Commit rejected by Prettier                  | Run `npm run format`, stage the updated files, and commit again                        |
+| Commit rejected by ESLint                    | Run `npm run lint:fix`, fix remaining errors, stage the changes, and commit again      |
+| Commit rejected by tests                     | Run `npm run test:ci` and fix the failing test                                         |
+| `open Dockerfile: no such file or directory` | Run Docker commands from the project root                                              |
+| `ERR_CONNECTION_REFUSED` on port 8018        | Check `docker ps` and confirm the port mapping is `0.0.0.0:8018->8018/tcp`             |
+| Container name already in use                | Stop and remove the existing container before starting another                         |
+| Actions workflow does not appear             | Confirm `.github/workflows/ci.yml` is at the repository root and pushed to GitHub      |
